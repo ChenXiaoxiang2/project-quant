@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.local
+*.env
+
+# Logs & reports
+logs/
+reports/*.md
+reports/*.docx
+reports/~$*
+*.log
+
+# Test outputs
+analyzer_output.md
+analyzer_test.md
+tasks/analyzer_test.md
+tasks/analyzer_output.md
+
+# Data
+data/raw/
+data/market_data.parquet
+
+# Temp
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

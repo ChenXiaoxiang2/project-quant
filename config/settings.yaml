@@ -1,0 +1,31 @@
+email:
+  smtp_server: "smtp.163.com"
+  smtp_port: 465
+  sender_email: "17051196422@163.com"
+  recipient_email: "17051196422@163.com"
+
+data_sources:
+  # 多源 fallback 优先级 (按顺序尝试)
+  realtime:
+    - TencentDataLoader    # 腾讯财经直调，最稳定
+    - SinaDataLoader       # 新浪财经备用
+    - AKShare              # 东方财富源作为最后 fallback
+  historical:
+    - BaostockDataLoader   # 证券宝，最可靠
+    - AKShare              # AKShare 历史数据备用
+    - TencentDataLoader    # 腾讯K线作为最后 fallback
+
+storage:
+  path: "./data/market_data.parquet"
+  db_type: "clickhouse"
+  db_url: "localhost:9000"
+
+risk:
+  max_drawdown: 0.15
+  daily_loss_limit: 0.05
+
+network:
+  # 禁用代理环境变量，确保直连
+  disable_proxy: true
+  request_timeout: 10
+  max_retries: 3

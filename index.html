@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>星际争霸：超维突击 (Starcraft Strike)</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; 
+            background: #050510; 
+            overflow: hidden; 
+            touch-action: none;
+            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
+        }
+        canvas { 
+            display: block; 
+            margin: 0 auto; 
+            background: #050510;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .hud-top {
+            padding: 15px;
+            color: #00ffff;
+            text-shadow: 0 0 5px #00ffff;
+            display: flex;
+            justify-content: space-between;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .hud-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            margin-top: 5px;
+        }
+        #levelDisplay {
+            font-size: 24px;
+            color: #ffaa00;
+            text-shadow: 0 0 10px #ffaa00;
+            letter-spacing: 2px;
+        }
+        #pauseBtn {
+            position: absolute;
+            right: 15px;
+            top: -15px;
+            pointer-events: auto;
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            padding: 5px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 0 5px #00ffff;
+            display: none;
+        }
+        
+        #bossHpContainer {
+            display: none;
+            width: 80%;
+            height: 15px;
+            margin: 20px auto 0 auto;
+            border: 2px solid #ff0055;
+            background: rgba(50, 0, 0, 0.5);
+            position: relative;
+        }
+        #bossHpBar {
+            height: 100%;
+            width: 100%;
+            background: #ff0055;
+            box-shadow: 0 0 10px #ff0055;
+            transition: width 0.1s linear;
+        }
+        #bossName {
+            position: absolute;
+            top: -20px;
+            left: 5px;
+            font-size: 12px;
+            color: #ff0055;
+            text-shadow: 0 0 5px #ff0055;
+        }
+
+        .instructions { 
+            padding: 15px;
+            color: rgba(200,200,255,0.7); 
+            text-align: center; 
+            font-size: 12px;
+            text-shadow: 0 0 2px #aaa;
+        }
+        
+        .overlay-menu {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: auto;
+            background: rgba(0, 10, 30, 0.85);
+            border: 2px solid #0088ff;
+            box-shadow: 0 0 30px #0088ff;
+            padding: 40px;
+            border-radius: 10px;
+            min-width: 250px;
+            display: none;
+            z-index: 100;
+        }
+        .overlay-menu h1 { 
+            font-size: 32px; 
+            margin: 0 0 20px 0; 
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        .overlay-menu p { font-size: 18px; margin-bottom: 30px; }
+        .btn-main {
+            background: #00aaff;
+            color: #000;
+            border: none;
+            padding: 12px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 0 15px #00aaff;
+            transition: 0.2s;
+        }
+        .btn-main:active { transform: scale(0.95); box-shadow: 0 0 5px #00aaff; }
+        
+        #menu-start { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-layer">
+        <div>
+            <div class="hud-top">
+                <span id="scoreDisplay">分数: 0</span>
+                <span id="weaponDisplay">主炮: Lv.1</span>
+                <span id="healthDisplay">装甲: 100%</span>
+            </div>
+            <div class="hud-header">
+                <div id="levelDisplay"></div>
+                <button id="pauseBtn" onclick="Main.pauseGame()">暂停</button>
+            </div>
+            <div id="bossHpContainer">
+                <div id="bossName">警告：巨型生命体靠近！</div>
+                <div id="bossHpBar"></div>
+            </div>
+        </div>
+        <div class="instructions">划动屏幕或 ← → 移动 | 收集能量体升级</div>
+    </div>
+
+    <!-- 菜单 -->
+    <div id="menu-start" class="overlay-menu">
+        <h1>超维突击</h1>
+        <p>指挥官，请登机。</p>
+        <button class="btn-main" onclick="Main.startNewGame()">开始突击</button>
+    </div>
+    <div id="menu-pause" class="overlay-menu">
+        <h1>系统暂停</h1>
+        <br>
+        <button class="btn-main" onclick="Main.resumeGame()">继续任务</button>
+    </div>
+    <div id="menu-gameover" class="overlay-menu">
+        <h1 style="color:#ff0055; text-shadow: 0 0 10px #ff0055;">舰毁人亡</h1>
+        <p id="finalScore">最终得分: 0</p>
+        <button class="btn-main" onclick="Main.startNewGame()">重启系统</button>
+    </div>
+
+    <script src="js/assets.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/entities.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

@@ -5,27 +5,64 @@ email:
   recipient_email: "17051196422@163.com"
 
 data_sources:
-  # 多源 fallback 优先级 (按顺序尝试)
   realtime:
-    - TencentDataLoader    # 腾讯财经直调，最稳定
-    - SinaDataLoader       # 新浪财经备用
-    - AKShare              # 东方财富源作为最后 fallback
+    - TencentDataLoader
+    - SinaDataLoader
+    - AKShare
   historical:
-    - BaostockDataLoader   # 证券宝，最可靠
-    - AKShare              # AKShare 历史数据备用
-    - TencentDataLoader    # 腾讯K线作为最后 fallback
+    - BaostockDataLoader
+    - AKShare
+    - TencentDataLoader
+
+# 智能选股参数
+screener:
+  roe_min: 10.0
+  gross_margin_min: 20.0
+  debt_ratio_max: 60.0
+  profit_growth_min: 0.0
+  volume_boost_min: 1.5
+  price_change_max: 9.0
+  rsi_max: 70.0
+  top_n: 50
+
+# 策略参数
+strategy:
+  ma_short: 5
+  ma_mid: 20
+  ma_long: 60
+  adx_threshold: 25
+  volume_multiplier: 1.5
+  atr_multiplier: 2.0
+  max_risk_pct: 0.02
+
+# 告警参数
+alerts:
+  enabled: true
+  poll_interval: 30
+  cooldown_min: 60
+  price_change_threshold: 5.0
+
+# 资讯参数
+news:
+  sources:
+    - cls
+    - sina
+    - eastmoney
+  sentiment_threshold: 0.2
+  days_to_keep: 7
+
+# 钉钉推送
+dingtalk:
+  enabled: false
+  webhook: ""
 
 storage:
-  path: "./data/market_data.parquet"
-  db_type: "clickhouse"
-  db_url: "localhost:9000"
-
-risk:
-  max_drawdown: 0.15
-  daily_loss_limit: 0.05
+  path: "./data"
+  db_news: "./data/news.db"
+  db_alerts: "./data/alerts.db"
+  reports: "./reports"
 
 network:
-  # 禁用代理环境变量，确保直连
   disable_proxy: true
   request_timeout: 10
   max_retries: 3

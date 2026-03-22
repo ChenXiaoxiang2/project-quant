@@ -132,15 +132,32 @@ class AlertDatabase:
 class AlertPusher:
     """告警推送 (邮件 + 钉钉)"""
 
-    def __init__(self, config: dict = None):
-        self.config = config or {}
+    def __init__(self, config: Optional[dict] = None):
+        if config is not None:
+            self.config = config
+        else:
+            self.config = self._load_config()
+
+    def _load_config(self) -> dict:
+        try:
+            import yaml
+            with open("./config/settings.yaml", 'r', encoding='utf-8') as f:
+                cfg = yaml.safe_load(f) or {}
+            # 规范化配置
+            return {
+                "email": cfg.get("email"),
+                "dingtalk_webhook": cfg.get("dingtalk", {}).get("webhook"),
+                "dingtalk_enabled": cfg.get("dingtalk", {}).get("enabled", False),
+            }
+        except Exception:
+            return {}
 
     def push(self, alert: Alert) -> bool:
         """推送告警，返回是否成功"""
         success = True
         if self.config.get("email"):
             success = success and self._push_email(alert)
-        if self.config.get("dingtalk"):
+        if self.config.get("dingtalk_enabled") and self.config.get("dingtalk_webhook"):
             success = success and self._push_dingtalk(alert)
         return success
 
@@ -358,8 +375,8 @@ class StockWatcher:
 
 # ── 快捷函数 ─────────────────────────────────────────────────────────────────
 
-def quick_watch(ts_codes: list[str], names: list[str], price_alert: float = None,
-                pct_alert: float = 9.0, dingtalk_webhook: str = None):
+def quick_watch(ts_codes: list[str], names: list[str], price_alert: Optional[float] = None,
+                pct_alert: float = 9.0, dingtalk_webhook: Optional[str] = None):
     """一行启动监控"""
     pusher = AlertPusher({"dingtalk_webhook": dingtalk_webhook}) if dingtalk_webhook else AlertPusher()
     watcher = StockWatcher(pusher=pusher)

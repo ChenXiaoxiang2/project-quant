@@ -181,49 +181,50 @@ class NewsCollector:
         os.environ['NO_PROXY'] = '*'
         items: list[NewsItem] = []
 
-        # 快讯
+        # 财经快讯 (AKShare 最新 API)
         try:
-            df = ak.stock_telegraph_cls()
+            df = ak.stock_news_em()
             for _, row in df.iterrows():
-                title = str(row.get('标题', ''))
-                content = str(row.get('内容', ''))
+                title = str(row.get('新闻标题', ''))
+                content = str(row.get('新闻内容', ''))
                 pub_time = str(row.get('发布时间', datetime.now().strftime('%Y-%m-%d %H:%M')))
                 sentiment = self._analyze_sentiment(title + content)
                 items.append(NewsItem(
-                    id=f"cls_{hash(title)}",
+                    id=f"aknews_{hash(title)}",
                     title=title[:200],
                     content=content[:500],
-                    source="cls",
+                    source=str(row.get('文章来源', 'akshare')),
                     category=self._categorize(title + content),
                     ts_code=self._extract_stock_code(title + content),
                     publish_time=pub_time,
                     sentiment=sentiment,
                     sentiment_label=self._sentiment_label(sentiment),
+                    url=str(row.get('新闻链接', '')),
                 ))
         except Exception as e:
             print(f"[AKShare 快讯] 失败: {e}")
 
-        # 财经要闻
+        # 主力资金流向新闻
         try:
-            df2 = ak.stock_telegraph_xpaper()
-            for _, row in df2.iterrows():
-                title = str(row.get('标题', ''))
-                content = str(row.get('内容', ''))
+            df2 = ak.stock_news_main_cx()
+            for _, row in df2.head(10).iterrows():
+                title = str(row.get('新闻标题', ''))
                 pub_time = str(row.get('发布时间', datetime.now().strftime('%Y-%m-%d %H:%M')))
-                sentiment = self._analyze_sentiment(title + content)
+                sentiment = self._analyze_sentiment(title)
                 items.append(NewsItem(
-                    id=f"xpaper_{hash(title)}",
+                    id=f"aknews_main_{hash(title)}",
                     title=title[:200],
-                    content=content[:500],
-                    source="xpaper",
-                    category=self._categorize(title + content),
-                    ts_code=self._extract_stock_code(title + content),
+                    content=title[:200],
+                    source=str(row.get('文章来源', 'akshare_main')),
+                    category=self._categorize(title),
+                    ts_code=self._extract_stock_code(title),
                     publish_time=pub_time,
                     sentiment=sentiment,
                     sentiment_label=self._sentiment_label(sentiment),
+                    url=str(row.get('新闻链接', '')),
                 ))
         except Exception as e:
-            print(f"[AKShare 要闻] 失败: {e}")
+            print(f"[AKShare 主力新闻] 失败: {e}")
 
         if items:
             self.db.insert_batch(items)
@@ -279,7 +280,7 @@ class NewsCollector:
                 pub_time = item.get('notice_date', '')[:16]
                 sentiment = self._analyze_sentiment(title)
                 items.append(NewsItem(
-                    id=f"em_{item.get("id", hash(title))}",
+                    id="em_" + str(item.get("id", hash(title))),
                     title=title[:200],
                     content=title[:200],
                     source="eastmoney",
@@ -390,6 +391,25 @@ class SentimentAnalyzer:
         if total == 0:
             return 0.0
         return round((pos - neg) / total, 2)
+
+    def get_market_sentiment_summary(self, db: NewsDatabase, days: int = 1) -> dict:
+        """获取全市场舆情摘要"""
+        since = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        rows = db.conn.execute(
+            "SELECT COUNT(*), AVG(sentiment), "
+            "SUM(CASE WHEN sentiment > 0.2 THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN sentiment < -0.2 THEN 1 ELSE 0 END) "
+            "FROM news WHERE publish_time >= ?",
+            (since,)
+        ).fetchone()
+        total = rows[0] or 0
+        return {
+            "total_news": total,
+            "avg_sentiment": round(rows[1] or 0, 3),
+            "positive_count": rows[2] or 0,
+            "negative_count": rows[3] or 0,
+            "bullish_ratio": round(rows[2] / max(total, 1) * 100, 1),
+        }
 
     def get_stock_sentiment(self, db: NewsDatabase, ts_code: str, days: int = 7) -> dict:
         """获取个股舆情概况"""

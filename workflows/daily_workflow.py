@@ -9,13 +9,13 @@ import sys
 import smtplib
 import ssl
 import yaml
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from news.collector import NewsCollector, SentimentAnalyzer
+from news.collector import NewsCollector, SentimentAnalyzer, NewsDatabase
 from screener.factor_engine import StockScreener, FactorConfig
 from strategies.signal_generator import SignalAggregator
 from monitor.alerts import StockWatcher, AlertPusher, AlertDatabase
@@ -86,9 +86,9 @@ class DailyWorkflow:
     def _step_sentiment(self, dry_run: bool = False) -> dict:
         """舆情分析"""
         analyzer = SentimentAnalyzer()
-        db = AlertDatabase()
-        # 分析市场整体情绪
-        sentiment = analyzer.get_stock_sentiment(db, ts_code=None, days=1)
+        news_db = NewsDatabase()
+        # 分析市场整体情绪（ts_code=None 表示全市场）
+        sentiment = analyzer.get_market_sentiment_summary(news_db, days=1)
         return sentiment
 
     def _step_screening(self, dry_run: bool = False) -> dict:
@@ -133,31 +133,84 @@ class DailyWorkflow:
         return {"signals": signals}
 
     def _step_report(self, dry_run: bool = False) -> dict:
-        """整合完整日报"""
+        """整合完整日报（使用各步骤真实数据）"""
         date_str = datetime.now().strftime("%Y%m%d")
         report_path = f"./reports/daily_{date_str}.md"
+
+        # 收集各步骤数据
+        sentiment_data = self._step_sentiment(dry_run=dry_run)
+        screening_data = self._step_screening(dry_run=dry_run)
+        signals_data = self._step_signals(dry_run=dry_run)
+
+        # 舆情摘要
+        sent = sentiment_data
+        sent_text = f"今日共采集 {sent.get('total_news', 0)} 条资讯，"
+        sent_text += f"平均情绪 {sent.get('avg_sentiment', 0):.2f}，"
+        sent_text += f"看多比例 {sent.get('bullish_ratio', 0)}%，"
+        sent_text += f"利好 {sent.get('positive_count', 0)} 条，利空 {sent.get('negative_count', 0)} 条"
+
+        # 选股结果
+        top_stocks = screening_data.get('top5', [])
+        screener_lines = []
+        for s in top_stocks:
+            screener_lines.append(f"- **{s.get('code', '')}** {s.get('name', '')} | "
+                                  f"综合评分 {s.get('score', 0):.1f} | "
+                                  f"PE {s.get('pe', 'N/A')} | "
+                                  f"ROE {s.get('roe', 'N/A')}%")
+
+        # 策略信号
+        signal_lines = []
+        for sig in signals_data.get('signals', []):
+            action_emoji = "🟢 买入" if sig['action'] == 'BUY' else "🔴 卖出" if sig['action'] == 'SELL' else "⚪ 观望"
+            signal_lines.append(f"- **{sig['name']}** ({sig['code']}) | {action_emoji} "
+                                f"| 置信度 {sig['confidence']:.0%} | 投票 {sig['votes']}")
 
         lines = [
             f"# 每日量化报告  {datetime.now().strftime('%Y-%m-%d %H:%M')}",
             "\n---\n",
             "## 一、市场舆情\n",
-            "> 实时监控财经资讯，评估市场情绪\n",
-            "## 二、智能选股\n",
-            "> 基于多因子模型筛选优质标的\n",
-            "## 三、策略信号\n",
-            "> 多策略聚合，捕捉交易机会\n",
-            "## 四、投资建议\n",
-            "> 综合技术面、基本面、舆情给出建议\n",
+            f"> {sent_text}\n",
+            "\n## 二、智能选股（多因子筛选 TOP 5）\n",
+            "> ROE>10% · 净利润增速>10% · 资产负债率<60% · 股价站上20日均线\n",
+        ]
+        if screener_lines:
+            lines.extend(screener_lines)
+        else:
+            lines.append("> 暂无满足条件的股票\n")
+
+        lines.extend([
+            "\n## 三、策略信号（多策略聚合）\n",
+            "> 双均线 / 布林带 / RSI / 海龟 / MACD 投票\n",
+        ])
+        if signal_lines:
+            lines.extend(signal_lines)
+        else:
+            lines.append("> 暂无策略信号\n")
+
+        # 综合建议
+        buy_signals = sum(1 for s in signals_data.get('signals', []) if s['action'] == 'BUY')
+        if buy_signals >= 2 and sent.get('avg_sentiment', 0) > 0.1:
+            advice = "**综合建议：谨慎买入** — 策略出现买入信号且市场情绪偏多，但需严格设置止损。"
+        elif buy_signals >= 1:
+            advice = "**综合建议：观望为主** — 少数策略出现信号，建议等待确认后再操作。"
+        elif sent.get('avg_sentiment', 0) < -0.1:
+            advice = "**综合建议：减仓回避** — 市场情绪偏空，控制风险为主。"
+        else:
+            advice = "**综合建议：中性** — 市场方向不明，保持现有仓位，耐心等待。"
+
+        lines.extend([
+            "\n## 四、投资建议\n",
+            f"> {advice}\n",
             "\n---\n",
             f"> ⚠️ 仅供参考，不构成投资建议 | 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
-        ]
+        ])
 
         content = '\n'.join(lines)
         os.makedirs("./reports", exist_ok=True)
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(content)
 
-        return {"path": report_path, "content": content}
+        return {"path": report_path, "content": content, "sentiment": sent_text}
 
     def _step_push(self, dry_run: bool = False) -> dict:
         """推送报告"""
@@ -197,10 +250,33 @@ class DailyWorkflow:
                 server.login(msg['From'], password)
                 server.send_message(msg)
             print(f"  邮件推送成功: {msg['To']}")
-            return {"pushed": True, "channel": "email"}
+            email_ok = True
         except Exception as e:
             print(f"  邮件推送失败: {e}")
-            return {"pushed": False, "reason": str(e)}
+            email_ok = False
+
+        # 钉钉推送
+        dingtalk_cfg = self.config.get('dingtalk', {})
+        dingtalk_ok = False
+        if dingtalk_cfg.get('enabled') and dingtalk_cfg.get('webhook'):
+            try:
+                import requests
+                short_content = content[:800] if len(content) > 800 else content
+                data = {
+                    "msgtype": "text",
+                    "text": {
+                        "content": f"【每日量化报告 {date_str}】\n\n{short_content}\n\n---\n⚠️ 仅供参考，不构成投资建议"
+                    }
+                }
+                r = requests.post(dingtalk_cfg['webhook'], json=data, timeout=10)
+                dingtalk_ok = r.json().get('errcode', -1) == 0
+                print(f"  钉钉推送{'成功' if dingtalk_ok else '失败'}")
+            except Exception as e:
+                print(f"  钉钉推送异常: {e}")
+
+        if email_ok or dingtalk_ok:
+            return {"pushed": True, "email": email_ok, "dingtalk": dingtalk_ok}
+        return {"pushed": False, "email": email_ok, "dingtalk": dingtalk_ok}
 
 
 def run():

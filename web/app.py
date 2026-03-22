@@ -10,6 +10,16 @@ API_URL = "http://localhost:8000"
 
 st.set_page_config(page_title="量化交易系统 v2", layout="wide")
 
+# ── session_state 初始化 ──────────────────────────────────────────────────────
+if 'screener_cache' not in st.session_state:
+    st.session_state['screener_cache'] = None
+if 'screener_cache_time' not in st.session_state:
+    st.session_state['screener_cache_time'] = None
+if 'news_cache' not in st.session_state:
+    st.session_state['news_cache'] = None
+if 'news_cache_time' not in st.session_state:
+    st.session_state['news_cache_time'] = None
+
 # ── 页面导航 ──────────────────────────────────────────────────────────────
 
 PAGES = [
@@ -209,7 +219,12 @@ elif page == "智能选股":
 
                 if not results:
                     st.warning("未筛选出符合条件的股票，请放宽条件重试")
+                    st.session_state['screener_cache'] = None
                 else:
+                    # 缓存结果
+                    st.session_state['screener_cache'] = results
+                    st.session_state['screener_cache_time'] = pd.Timestamp.now()
+
                     st.success(f"筛选出 {len(results)} 只符合条件股票")
 
                     # Top 10 展示
@@ -228,15 +243,15 @@ elif page == "智能选股":
                     st.dataframe(pd.DataFrame(display), use_container_width=True, hide_index=True)
 
                     # 导出
-                    csv = '\n'.join([
-                        f"{r.rank},{r.ts_code},{r.name},{r.close:.2f},{r.pct_chg:+.2f}%,{r.score:.0f},{r.signal},{r.reason}"
-                        for r in results
-                    ])
+                    csv_lines = ["排名,代码,名称,现价,涨幅,评分,信号,推荐理由"]
+                    for r in results:
+                        csv_lines.append(f"{r.rank},{r.ts_code},{r.name},{r.close:.2f},{r.pct_chg:+.2f}%,{r.score:.0f},{r.signal},{r.reason}")
                     st.download_button(
                         "📥 导出 CSV",
-                        csv.encode('utf-8'),
+                        '\n'.join(csv_lines).encode('utf-8-sig'),
                         "stock_screening.csv",
                         "text/csv",
+                        key="export_csv"
                     )
 
                     # 完整报告
@@ -245,6 +260,16 @@ elif page == "智能选股":
 
             except Exception as e:
                 st.error(f"选股失败: {e}")
+                st.session_state['screener_cache'] = None
+
+    # 显示缓存结果
+    if st.session_state.get('screener_cache'):
+        cached = st.session_state['screener_cache']
+        cache_time = st.session_state.get('screener_cache_time')
+        age = ""
+        if cache_time:
+            age = f"（缓存: {cache_time.strftime('%H:%M:%S')}）"
+        st.info(f"📋 当前显示缓存结果 {age}，修改参数后点击「开始选股」刷新")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -507,11 +532,21 @@ elif page == "每日工作流":
                     st.markdown(f"**{name}**")
                     if isinstance(result, dict):
                         for k, v in result.items():
-                            if k not in ('report', 'content'):
+                            if k not in ('report', 'content', 'top5'):
                                 st.write(f"  {k}: {v}")
 
-                st.success("✅ 工作流执行完成！")
+                # 显示日报内容
+                report_result = results.get("5. 整合报告", {})
+                if report_result and isinstance(report_result, dict):
+                    report_path = report_result.get('path')
+                    if report_path and os.path.exists(report_path):
+                        with open(report_path, 'r', encoding='utf-8') as f:
+                            st.markdown("---")
+                            st.subheader("📰 今日量化报告预览")
+                            st.markdown(f.read())
+
+                st.success("✅ 工作流执行完成！报告已保存至 ./reports/ 目录")
             except Exception as e:
                 st.error(f"工作流失败: {e}")
 
-    st.info("💡 建议使用 Windows 任务计划程序定时执行: `python workflows/daily_workflow.py`")
+    st.info("💡 建议使用 Windows 任务计划程序定时执行: 右键「以管理员身份运行」`配置定时任务.bat`")

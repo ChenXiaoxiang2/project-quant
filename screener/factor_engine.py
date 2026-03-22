@@ -127,16 +127,17 @@ class StockScreener:
 
         # 5. 转换为结果对象
         for rank, (_, row) in enumerate(scored_df.iterrows(), 1):
+            ts_code = str(row.get('ts_code', ''))
             results.append(ScreenResult(
                 rank=rank,
-                ts_code=row['ts_code'],
-                name=row.get('name', row['ts_code']),
-                close=float(row.get('close', 0)),
-                pct_chg=float(row.get('pct_chg', 0)),
-                score=float(row['score']),
-                factors=row.get('factors', {}),
-                signal=row.get('signal', 'HOLD'),
-                reason=row.get('reason', ''),
+                ts_code=ts_code,
+                name=str(row.get('name', ts_code)),
+                close=float(row.get('close') or 0),
+                pct_chg=float(row.get('pct_chg') or 0),
+                score=float(row.get('score') or 0),
+                factors=dict(row.get('factors') or {}),
+                signal=str(row.get('signal') or 'HOLD'),
+                reason=str(row.get('reason') or ''),
             ))
 
         return results
@@ -262,7 +263,7 @@ class StockScreener:
         if above_ma20: tech_score += 15
         if above_ma60: tech_score += 10
         if 40 <= rsi <= 60: tech_score += 10  # RSI 适中区
-        if vol_ratio >= cfg.volume_boost_min: tech_score += 10
+        if vol_ratio is not None and cfg.volume_boost_min and vol_ratio >= cfg.volume_boost_min: tech_score += 10
         if momentum > 0: tech_score += 10
 
         score = tech_score + financial_score

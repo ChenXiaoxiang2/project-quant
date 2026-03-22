@@ -8,6 +8,8 @@ import random
 import os
 import pandas as pd
 from datetime import datetime
+import akshare as ak
+import baostock as bs
 
 # ------------------------------------------------------------------------------
 # 源 1: 腾讯财经直调 (最稳定，延迟 ~3s)
@@ -185,8 +187,6 @@ class BaostockDataLoader:
         ts_code 格式: 'sh.600519' 或 'sz.000001'
         adjustflag: '1'=后复权, '2'=前复权, '3'=不复权
         """
-        import baostock as bs
-
         # 转换: 600519.SH -> sh.600519, 000001.SZ -> sz.000001, sh600519 -> sh.600519
         ts_upper = ts_code.upper()
         if ts_code.startswith('sh') or '.SH' in ts_code or (len(ts_code) == 9 and ts_code[0] == 's'):
@@ -226,7 +226,6 @@ class BaostockDataLoader:
 
     def fetch_stock_list(self) -> pd.DataFrame:
         """获取全市场股票列表"""
-        import baostock as bs
         bs.login()
         try:
             rs = bs.query_all_stock(day=datetime.now().strftime('%Y-%m-%d'))
@@ -292,7 +291,8 @@ class StockDataLoader:
         try:
             df = self._akshare.fetch_daily_all()
             if not df.empty:
-                return df[df['ts_code'].isin([c[2:] for c in codes])]
+                result: pd.DataFrame = df[df['ts_code'].isin([c[2:] for c in codes])]
+                return result.reset_index(drop=True)
         except Exception as e:
             print(f"[AKShare] 失败: {e}")
 

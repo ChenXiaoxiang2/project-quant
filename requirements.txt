@@ -1,0 +1,10 @@
+streamlit>=1.40
+plotly>=6.0
+pandas>=1.5
+requests>=2.28
+pyyaml>=6.0
+uvicorn>=0.20
+snownlp>=0.12
+akshare>=1.14
+baostock>=0.8
+streamlit-autorefresh>=1.0

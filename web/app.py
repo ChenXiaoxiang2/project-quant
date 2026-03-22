@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -11,351 +11,177 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/..')
 
 API_URL = "http://localhost:8000"
 
-st.set_page_config(page_title="QuantDesk", layout="wide", initial_sidebar_state="collapsed")
+# ── 主题选择 ──────────────────────────────────────────────────────────
+if 'theme' not in st.session_state:
+    st.session_state['theme'] = 'dark'
+
+THEME = st.session_state.get('theme', 'dark')
+
+if 'nav_page' not in st.session_state:
+    st.session_state['nav_page'] = '系统状态'
+
+st.set_page_config(
+    page_title="QuantDesk",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# IMPECCABLE DESIGN SYSTEM v2 — 专业金融终端
-# 核心理念: 线条分区 · 数据即装饰 · 留白即节奏 · 无卡片嵌套
+# IMPECCABLE DESIGN SYSTEM v3 — 专业金融终端
 # ═══════════════════════════════════════════════════════════════════════════
-st.markdown("""
+if THEME == 'dark':
+    st.markdown("""
 <style>
-  /* ── 色彩系统 ───────────────────────────────────────────────────── */
-  :root {
-    --bg-void:      #08080b;
-    --bg-base:      #0d0d11;
-    --bg-surface:   #12121a;
-    --bg-raised:    #1a1a24;
-    --bg-overlay:   #22222e;
-    --accent:       #e8a020;
-    --accent-dim:   #9e6b14;
-    --accent-glow:  rgba(232, 160, 32, 0.15);
-    --text-1:       #eeeef2;
-    --text-2:       #9090a0;
-    --text-3:       #55556a;
-    --border:       #1f1f2c;
-    --border-lit:   #2e2e3e;
-    --green:        #22c55e;
-    --green-dim:    rgba(34, 197, 94, 0.12);
-    --red:          #ef4444;
-    --red-dim:      rgba(239, 68, 68, 0.12);
-    --blue:         #60a5fa;
-    --blue-dim:     rgba(96, 165, 250, 0.10);
-  }
-
-  /* ── 字体系统 (Tabular Numbers for data) ──────────────────────── */
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
-  html, body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', 'Courier New', monospace !important; font-variant-numeric: tabular-nums; }
-  [data-testid="stMetric"] [data-testid="stMetricValue"] { letter-spacing: -0.02em; }
-
-  /* ── 全局背景 ─────────────────────────────────────────────────── */
-  .stApp { background: var(--bg-void); color: var(--text-1); }
+  :root {
+    --bg-void:      #08080b; --bg-base: #0d0d11; --bg-surface: #12121a;
+    --bg-raised:    #1a1a24; --bg-overlay: #22222e;
+    --accent: #e8a020; --accent-dim: #9e6b14; --accent-glow: rgba(232,160,32,0.15);
+    --text-1: #eeeef2; --text-2: #9090a0; --text-3: #55556a;
+    --border: #1f1f2c; --border-lit: #2e2e3e;
+    --green: #22c55e; --green-dim: rgba(34,197,94,0.12);
+    --red: #ef4444; --red-dim: rgba(239,68,68,0.12);
+    --blue: #60a5fa; --blue-dim: rgba(96,165,250,0.10);
+  }
+  html, body, .stApp { font-family: 'Inter', sans-serif; background: var(--bg-void); color: var(--text-1); }
+  [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace !important; font-variant-numeric: tabular-nums; }
+  .stApp { background: var(--bg-void); }
   [data-testid="stHeader"] { background: transparent; border-bottom: 1px solid var(--border); }
   [data-testid="stMainBlockContainer"] { padding-top: 1.5rem; padding-left: 2rem; padding-right: 2rem; }
   [data-testid="stStatusWidget"] { display: none; }
-
-  /* ── 滚动条 ──────────────────────────────────────────────────── */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: var(--bg-base); }
   ::-webkit-scrollbar-thumb { background: var(--border-lit); border-radius: 2px; }
-
-  /* ── 侧边栏 ──────────────────────────────────────────────────── */
-  [data-testid="stSidebar"] {
-    background: var(--bg-surface);
-    border-right: 1px solid var(--border);
-    width: 220px !important;
-    transition: width 0.2s;
-  }
-  [data-testid="stSidebar"]:hover { width: 220px !important; }
-
-  /* ── 侧边栏头部 ──────────────────────────────────────────────── */
-  .qd-logo-wrap {
-    padding: 20px 16px 16px;
-    border-bottom: 1px solid var(--border);
-  }
-  .qd-logo {
-    font-size: 1.05rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    color: var(--text-1);
-    text-transform: uppercase;
-  }
-  .qd-tagline {
-    font-size: 0.65rem;
-    color: var(--text-3);
-    letter-spacing: 0.06em;
-    margin-top: 3px;
-  }
-
-  /* ── 导航项 ──────────────────────────────────────────────────── */
+  [data-testid="stSidebar"] { background: var(--bg-surface); border-right: 1px solid var(--border); width: 220px !important; }
+  .qd-logo-wrap { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
+  .qd-logo { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.12em; color: var(--text-1); text-transform: uppercase; }
+  .qd-tagline { font-size: 0.65rem; color: var(--text-3); letter-spacing: 0.06em; margin-top: 3px; }
   .qd-nav-section { padding: 10px 10px 4px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-3); }
-  .qd-nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    margin: 2px 6px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.82rem;
-    font-weight: 500;
-    color: var(--text-2);
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-    border: 1px solid transparent;
-    user-select: none;
-    position: relative;
-  }
+  .qd-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 2px 6px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--text-2); transition: background 0.12s, color 0.12s; border: 1px solid transparent; user-select: none; position: relative; }
   .qd-nav-item:hover { background: var(--bg-raised); color: var(--text-1); }
-  .qd-nav-item.active {
-    background: var(--bg-raised);
-    color: var(--accent);
-    border-color: var(--border-lit);
-  }
-  .qd-nav-item.active::before {
-    content: '';
-    position: absolute;
-    left: -6px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: var(--accent);
-    border-radius: 0 2px 2px 0;
-  }
+  .qd-nav-item.active { background: var(--bg-raised); color: var(--accent); border-color: var(--border-lit); }
+  .qd-nav-item.active::before { content: ''; position: absolute; left: -6px; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; background: var(--accent); border-radius: 0 2px 2px 0; }
   .qd-nav-icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
   .qd-nav-label { flex: 1; line-height: 1.3; }
   .qd-nav-sub { font-size: 0.62rem; color: var(--text-3); font-weight: 400; }
-
-  /* ── 侧边栏底部 ──────────────────────────────────────────────── */
-  .qd-sidebar-footer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 10px 16px;
-    border-top: 1px solid var(--border);
-    font-size: 0.62rem;
-    color: var(--text-3);
-  }
-
-  /* ── 页面头部 ────────────────────────────────────────────────── */
-  .qd-page-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding-bottom: 1.2rem;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 1.6rem;
-  }
+  .qd-sidebar-footer { position: absolute; bottom: 0; left: 0; right: 0; padding: 10px 16px; border-top: 1px solid var(--border); font-size: 0.62rem; color: var(--text-3); }
+  .qd-page-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 1.2rem; border-bottom: 1px solid var(--border); margin-bottom: 1.6rem; }
   .qd-page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-1); letter-spacing: -0.02em; line-height: 1.2; }
   .qd-page-sub { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
   .qd-header-right { text-align: right; }
-  .qd-live-dot {
-    display: inline-block;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 6px var(--green);
-    margin-right: 5px;
-    animation: pulse-green 2s infinite;
-  }
-  @keyframes pulse-green {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  /* ── Metric 卡片 ──────────────────────────────────────────────── */
-  div[data-testid="stMetric"] {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-lit);
-    border-radius: 8px;
-    padding: 14px 16px;
-    position: relative;
-    overflow: hidden;
-  }
-  div[data-testid="stMetric"]::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: var(--accent);
-    opacity: 0.6;
-  }
-  div[data-testid="stMetricLabel"] {
-    color: var(--text-3) !important;
-    font-size: 0.62rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
+  .qd-live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); margin-right: 5px; animation: pulse-green 2s infinite; }
+  @keyframes pulse-green { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  div[data-testid="stMetric"] { background: var(--bg-surface); border: 1px solid var(--border-lit); border-radius: 8px; padding: 14px 16px; position: relative; overflow: hidden; }
+  div[data-testid="stMetric"]::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); opacity: 0.6; }
+  div[data-testid="stMetricLabel"] { color: var(--text-3) !important; font-size: 0.62rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.1em; }
   div[data-testid="stMetricValue"] { color: var(--text-1) !important; font-weight: 700; font-size: 1.1rem; }
-  div[data-testid="stMetricDelta"] { font-size: 0.7rem; }
-
-  /* ── 分隔线 ──────────────────────────────────────────────────── */
   .qd-divider { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
-
-  /* ── 区块标题 ────────────────────────────────────────────────── */
-  .qd-section-title {
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-3);
-    margin-bottom: 0.8rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  /* ── 按钮重写 ────────────────────────────────────────────────── */
-  .stButton > button {
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.82rem;
-    border: 1px solid var(--border-lit);
-    background: var(--bg-raised);
-    color: var(--text-1);
-    transition: all 0.15s;
-    height: 36px;
-  }
+  .qd-section-title { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3); margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+  .stButton > button { border-radius: 6px; font-weight: 600; font-size: 0.82rem; border: 1px solid var(--border-lit); background: var(--bg-raised); color: var(--text-1); transition: all 0.15s; height: 36px; }
   .stButton > button:hover { background: var(--bg-overlay); border-color: var(--accent); color: var(--accent); }
-  button[kind="primary"] {
-    background: var(--accent) !important;
-    color: #000 !important;
-    border-color: var(--accent) !important;
-    font-weight: 700 !important;
-  }
+  button[kind="primary"] { background: var(--accent) !important; color: #000 !important; border-color: var(--accent) !important; font-weight: 700 !important; }
   button[kind="primary"]:hover { background: var(--accent-dim) !important; border-color: var(--accent-dim) !important; color: #fff !important; }
-
-  /* ── 数据表格 ────────────────────────────────────────────────── */
   .dataframe tbody tr:nth-child(even) { background: var(--bg-raised) !important; }
   .dataframe tbody tr:hover { background: var(--bg-overlay) !important; }
-  thead th {
-    background: var(--bg-raised) !important;
-    color: var(--text-3) !important;
-    font-size: 0.62rem !important;
-    font-weight: 700 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    border-bottom: 2px solid var(--border-lit) !important;
-    padding: 8px 12px !important;
-  }
+  thead th { background: var(--bg-raised) !important; color: var(--text-3) !important; font-size: 0.62rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 2px solid var(--border-lit) !important; padding: 8px 12px !important; }
   tbody td { border-color: var(--border) !important; font-size: 0.8rem; padding: 7px 12px !important; }
-
-  /* ── 输入框 ──────────────────────────────────────────────────── */
-  .stTextInput > div > div > input,
-  .stNumberInput > div > div > input {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-lit);
-    border-radius: 6px;
-    color: var(--text-1);
-    font-size: 0.85rem;
-  }
-  .stTextInput > div > div > input:focus,
-  .stNumberInput > div > div > input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-glow);
-  }
-  .stTextInput label, .stNumberInput label,
-  .stSlider label, .stCheckbox label {
-    color: var(--text-2) !important;
-    font-size: 0.78rem !important;
-    font-weight: 500 !important;
-  }
-
-  /* ── Selectbox / Tabs ─────────────────────────────────────────── */
+  .stTextInput > div > div > input, .stNumberInput > div > div > input { background: var(--bg-surface); border: 1px solid var(--border-lit); border-radius: 6px; color: var(--text-1); font-size: 0.85rem; }
+  .stTextInput > div > div > input:focus, .stNumberInput > div > div > input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .stTextInput label, .stNumberInput label, .stSlider label, .stCheckbox label { color: var(--text-2) !important; font-size: 0.78rem !important; font-weight: 500 !important; }
   .stSelectbox > div > div { background: var(--bg-surface); border: 1px solid var(--border-lit); border-radius: 6px; }
   .stTabs [data-baseweb="tab-list"] { gap: 2px; background: var(--bg-surface); border-radius: 6px; padding: 2px; }
-  .stTabs [data-baseweb="tab"] {
-    border-radius: 4px;
-    padding: 5px 14px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-2);
-    border: none;
-  }
+  .stTabs [data-baseweb="tab"] { border-radius: 4px; padding: 5px 14px; font-size: 0.78rem; font-weight: 600; color: var(--text-2); border: none; }
   .stTabs [aria-selected="true"] { background: var(--bg-overlay) !important; color: var(--accent) !important; }
-
-  /* ── 展开器 ──────────────────────────────────────────────────── */
-  .streamlit-expanderHeader {
-    border-radius: 6px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-lit);
-    color: var(--text-2);
-    font-size: 0.82rem;
-    font-weight: 600;
-  }
+  .streamlit-expanderHeader { border-radius: 6px; background: var(--bg-surface); border: 1px solid var(--border-lit); color: var(--text-2); font-size: 0.82rem; font-weight: 600; }
   .streamlit-expanderContent { background: var(--bg-surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; }
-
-  /* ── 告警卡片 ────────────────────────────────────────────────── */
-  .qd-alert-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-lit);
-    border-radius: 8px;
-    padding: 12px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-  .qd-alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-  /* ── 行情色彩 ─────────────────────────────────────────────────── */
   .gain { color: var(--green) !important; font-weight: 700; }
   .loss { color: var(--red) !important; font-weight: 700; }
   .neutral { color: var(--text-2) !important; }
-
-  /* ── 状态指示器行 ────────────────────────────────────────────── */
-  .qd-status-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 0.8rem;
-  }
-  .qd-status-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  }
-
-  /* ── 工作流步骤 ──────────────────────────────────────────────── */
-  .qd-step {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .qd-step-num {
-    width: 24px; height: 24px;
-    border-radius: 50%;
-    background: var(--bg-overlay);
-    border: 1px solid var(--border-lit);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--text-3);
-    flex-shrink: 0;
-  }
+  .qd-step { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .qd-step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--bg-overlay); border: 1px solid var(--border-lit); display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: var(--text-3); flex-shrink: 0; }
   .qd-step-title { font-size: 0.85rem; font-weight: 600; color: var(--text-1); }
   .qd-step-desc { font-size: 0.72rem; color: var(--text-3); margin-top: 2px; }
-
-  /* ── 动画入场 ────────────────────────────────────────────────── */
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .stApp > div { animation: fadeInUp 0.3s ease-out; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .refresh-spin { display: inline-block; animation: spin 2s linear infinite; }
+</style>
+""", unsafe_allow_html=True)
+else:
+    # Light 主题
+    st.markdown("""
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
+  :root {
+    --bg-void: #ffffff; --bg-base: #f8f9fa; --bg-surface: #ffffff;
+    --bg-raised: #f0f2f5; --bg-overlay: #e8eaed;
+    --accent: #e8a020; --accent-dim: #b88010; --accent-glow: rgba(232,160,32,0.12);
+    --text-1: #1a1a2e; --text-2: #4a4a5a; --text-3: #9090a0;
+    --border: #e0e0e8; --border-lit: #c8c8d8;
+    --green: #16a34a; --green-dim: rgba(22,163,74,0.08);
+    --red: #dc2626; --red-dim: rgba(220,38,38,0.08);
+    --blue: #2563eb; --blue-dim: rgba(37,99,235,0.08);
   }
+  html, body, .stApp { font-family: 'Inter', sans-serif; background: var(--bg-base); color: var(--text-1); }
+  [data-testid="stMetricValue"] { font-family: 'IBM Plex Mono', monospace !important; font-variant-numeric: tabular-nums; }
+  .stApp { background: var(--bg-base); }
+  [data-testid="stHeader"] { background: transparent; border-bottom: 1px solid var(--border); }
+  [data-testid="stMainBlockContainer"] { padding-top: 1.5rem; padding-left: 2rem; padding-right: 2rem; }
+  [data-testid="stStatusWidget"] { display: none; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg-base); }
+  ::-webkit-scrollbar-thumb { background: var(--border-lit); border-radius: 2px; }
+  [data-testid="stSidebar"] { background: var(--bg-surface); border-right: 1px solid var(--border); width: 220px !important; }
+  .qd-logo-wrap { padding: 20px 16px 16px; border-bottom: 1px solid var(--border); }
+  .qd-logo { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.12em; color: var(--text-1); text-transform: uppercase; }
+  .qd-tagline { font-size: 0.65rem; color: var(--text-3); letter-spacing: 0.06em; margin-top: 3px; }
+  .qd-nav-section { padding: 10px 10px 4px; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-3); }
+  .qd-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 2px 6px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 500; color: var(--text-2); transition: background 0.12s, color 0.12s; border: 1px solid transparent; user-select: none; position: relative; }
+  .qd-nav-item:hover { background: var(--bg-raised); color: var(--text-1); }
+  .qd-nav-item.active { background: var(--accent-glow); color: var(--accent); border-color: var(--accent); }
+  .qd-nav-item.active::before { content: ''; position: absolute; left: -6px; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; background: var(--accent); border-radius: 0 2px 2px 0; }
+  .qd-nav-icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
+  .qd-nav-label { flex: 1; line-height: 1.3; }
+  .qd-nav-sub { font-size: 0.62rem; color: var(--text-3); font-weight: 400; }
+  .qd-sidebar-footer { position: absolute; bottom: 0; left: 0; right: 0; padding: 10px 16px; border-top: 1px solid var(--border); font-size: 0.62rem; color: var(--text-3); }
+  .qd-page-header { display: flex; align-items: flex-start; justify-content: space-between; padding-bottom: 1.2rem; border-bottom: 1px solid var(--border); margin-bottom: 1.6rem; }
+  .qd-page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-1); letter-spacing: -0.02em; line-height: 1.2; }
+  .qd-page-sub { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
+  .qd-header-right { text-align: right; }
+  .qd-live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); margin-right: 5px; animation: pulse-green 2s infinite; }
+  @keyframes pulse-green { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  div[data-testid="stMetric"] { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  div[data-testid="stMetric"]::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); opacity: 0.8; }
+  div[data-testid="stMetricLabel"] { color: var(--text-3) !important; font-size: 0.62rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.1em; }
+  div[data-testid="stMetricValue"] { color: var(--text-1) !important; font-weight: 700; font-size: 1.1rem; }
+  .qd-divider { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
+  .qd-section-title { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3); margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+  .stButton > button { border-radius: 6px; font-weight: 600; font-size: 0.82rem; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-1); transition: all 0.15s; height: 36px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .stButton > button:hover { background: var(--bg-raised); border-color: var(--accent); color: var(--accent); }
+  button[kind="primary"] { background: var(--accent) !important; color: #000 !important; border-color: var(--accent) !important; font-weight: 700 !important; }
+  button[kind="primary"]:hover { background: var(--accent-dim) !important; }
+  .dataframe tbody tr:nth-child(even) { background: var(--bg-raised) !important; }
+  .dataframe tbody tr:hover { background: var(--bg-overlay) !important; }
+  thead th { background: var(--bg-raised) !important; color: var(--text-3) !important; font-size: 0.62rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 2px solid var(--border) !important; padding: 8px 12px !important; }
+  tbody td { border-color: var(--border) !important; font-size: 0.8rem; padding: 7px 12px !important; }
+  .stTextInput > div > div > input, .stNumberInput > div > div > input { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text-1); font-size: 0.85rem; }
+  .stTextInput > div > div > input:focus, .stNumberInput > div > div > input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .stTextInput label, .stNumberInput label, .stSlider label, .stCheckbox label { color: var(--text-2) !important; font-size: 0.78rem !important; font-weight: 500 !important; }
+  .stSelectbox > div > div { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; }
+  .stTabs [data-baseweb="tab-list"] { gap: 2px; background: var(--bg-raised); border-radius: 6px; padding: 2px; }
+  .stTabs [data-baseweb="tab"] { border-radius: 4px; padding: 5px 14px; font-size: 0.78rem; font-weight: 600; color: var(--text-2); border: none; }
+  .stTabs [aria-selected="true"] { background: var(--bg-surface) !important; color: var(--accent) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .streamlit-expanderHeader { border-radius: 6px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-2); font-size: 0.82rem; font-weight: 600; }
+  .streamlit-expanderContent { background: var(--bg-surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; }
+  .gain { color: var(--green) !important; font-weight: 700; }
+  .loss { color: var(--red) !important; font-weight: 700; }
+  .neutral { color: var(--text-2) !important; }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .stApp > div { animation: fadeInUp 0.3s ease-out; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── session_state ────────────────────────────────────────────────────────────
-if 'nav_page' not in st.session_state:
-    st.session_state['nav_page'] = '智能选股'
-for _k in ('screener_cache', 'screener_cache_time', 'news_cache', 'news_cache_time', 'analyze_code'):
-    if _k not in st.session_state:
-        st.session_state[_k] = None
-
-# ── 侧边栏导航 ──────────────────────────────────────────────────────────────
+# ── 导航与路由 ──────────────────────────────────────────────────────────────
 NAV = [
     ("系统状态",   "🖥", "模块总览"),
     ("K线图表",    "📉", "K线·均量·指标"),
@@ -384,6 +210,14 @@ with st.sidebar:
         st.markdown(f'<div class="{cls}" id="nav_{name}" style="display:none"></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="qd-sidebar-footer">仅供参考 · 不构成投资建议</div>', unsafe_allow_html=True)
+
+    # ── 主题切换 ──────────────────────────────────────────────────
+    st.divider()
+    theme_icon = "🌙" if THEME == "dark" else "☀️"
+    theme_label = "切换亮色" if THEME == "dark" else "切换暗色"
+    if st.button(f"{theme_icon} {theme_label}", help="切换主题", use_container_width=True):
+        st.session_state['theme'] = 'light' if THEME == 'dark' else 'dark'
+        st.rerun()
 
 page = st.session_state['nav_page']
 
@@ -425,12 +259,12 @@ if page == "系统状态":
         col1.markdown('<div style="background:var(--red-dim);border:1px solid var(--red);border-radius:8px;padding:16px"><div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--red);font-weight:700">系统状态</div><div style="font-size:1.2rem;font-weight:700;color:var(--red);margin-top:6px">未启动</div><div style="font-size:0.72rem;color:var(--text-3);margin-top:4px">请运行 python web/api_server.py</div></div>', unsafe_allow_html=True)
 
     col2.metric("运行时间", datetime.now().strftime("%H:%M"), "系统正常")
-    col3.metric("模块数量", "8", "全部就绪")
+    col3.metric("模块数量", "9", "全部就绪")
 
     section_title("数据模块")
     modules = [
-        ("实时行情",   "腾讯财经直调",     True,  "实时 + 历史K线"),
-        ("历史K线",    "Baostock",         True,  "前复权日线"),
+        ("实时行情",   "腾讯财经直调",     True,  "实时行情"),
+        ("历史K线",    "新浪财经",         True,  "日K · 周K · 分钟K"),
         ("财务指标",   "AKShare",          True,  "PE · ROE · 毛利率"),
         ("资讯聚合",   "财联社/新浪/东财",  True,  "快讯 · 公告 · 资金流"),
         ("智能选股",   "多因子引擎",        True,  "技术面优先 · 基本面过滤"),
@@ -958,17 +792,16 @@ elif page == "策略信号":
     if st.button("📊 生成信号", type="primary"):
         with st.spinner("计算中..."):
             try:
-                from data.data_loader import BaostockDataLoader, StockDataLoader
+                from data.data_loader import StockDataLoader
                 from strategies.signal_generator import SignalAggregator
                 from datetime import timedelta as td
 
                 loader = StockDataLoader()
-                baostock = BaostockDataLoader()
                 cd = sig_code.strip().upper()
                 if not cd.startswith(('6','0','3')): cd = '6'+cd
                 norm = f"{cd}.SH" if cd.startswith(('6','5','9')) else f"{cd}.SZ"
 
-                hist = baostock.fetch_historical(norm,
+                hist = loader.get_historical(norm,
                     (datetime.now()-td(days=90)).strftime('%Y-%m-%d'),
                     datetime.now().strftime('%Y-%m-%d'))
                 if hist.empty:

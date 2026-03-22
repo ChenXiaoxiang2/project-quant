@@ -1,0 +1,17 @@
+[server]
+runOnSave = false
+
+[server.global]
+dataFrameSerialization = "legacy"
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#e8a020"
+backgroundColor = "#08080b"
+secondaryBackgroundColor = "#12121a"
+textColor = "#eeeef2"
+
+[runner]
+magicEnabled = false

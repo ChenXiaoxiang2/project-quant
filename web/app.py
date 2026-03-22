@@ -4,6 +4,8 @@ import pandas as pd
 import sys
 import os
 from datetime import datetime
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/..')
 
@@ -356,7 +358,9 @@ for _k in ('screener_cache', 'screener_cache_time', 'news_cache', 'news_cache_ti
 # ── 侧边栏导航 ──────────────────────────────────────────────────────────────
 NAV = [
     ("系统状态",   "🖥", "模块总览"),
+    ("K线图表",    "📉", "K线·均量·指标"),
     ("个股分析报告","📊", "技术·财务·建议"),
+    ("投资机会",   "💎", "机会发现·监控提醒"),
     ("智能选股",   "🎯", "多因子筛选"),
     ("策略信号",   "📈", "5大策略"),
     ("财经资讯",   "📰", "舆情分析"),
@@ -455,10 +459,148 @@ if page == "系统状态":
             """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 页面 2: 个股分析报告
+# 页面 2: K线图表 (NEW)
+# ═══════════════════════════════════════════════════════════════════════════
+elif page == "K线图表":
+    page_header("K线图表", "日K · 周K · 5分钟K · MA均线 · 成交量")
+
+    kc1, kc2 = st.columns([3, 1])
+    k_code = kc1.text_input("股票代码", value="600519", placeholder="输入代码如 600519")
+    k_period = kc2.selectbox("周期", ["日K", "周K", "5分钟"], index=0)
+
+    scale_map = {"日K": ("day", 120), "周K": ("week", 60), "5分钟": ("5min", 100)}
+    period_key, k_count = scale_map[k_period]
+
+    if st.button("📊 加载K线", type="primary", use_container_width=True):
+        if not k_code.strip():
+            st.warning("请输入股票代码")
+        else:
+            with st.spinner("加载K线数据..."):
+                try:
+                    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + '/..')
+                    from data.data_loader import StockDataLoader
+                    loader = StockDataLoader()
+                    code_raw = k_code.strip()
+                    ts_fmt = f"{code_raw}.SH" if code_raw.startswith(('6','5','9')) else f"{code_raw}.SZ"
+                    # 计算日期范围
+                    days_range = {"日K": 180, "周K": 365, "5分钟": 30}[k_period]
+                    from datetime import timedelta
+                    end_d = datetime.now().strftime('%Y-%m-%d')
+                    start_d = (datetime.now() - timedelta(days=days_range)).strftime('%Y-%m-%d')
+
+                    df = loader.get_historical(ts_fmt, start_d, end_d)
+                    if df.empty:
+                        st.error("无法获取K线数据，请检查代码是否正确")
+                    else:
+                        # 计算均线
+                        df['ma5'] = df['close'].rolling(5).mean()
+                        df['ma10'] = df['close'].rolling(10).mean()
+                        df['ma20'] = df['close'].rolling(20).mean()
+                        df['ma60'] = df['close'].rolling(60).mean()
+
+                        # K线图
+                        fig = make_subplots(
+                            rows=3, cols=1,
+                            shared_xaxes=True,
+                            vertical_spacing=0.03,
+                            row_heights=[0.55, 0.2, 0.25],
+                            specs=[[{"type": "candlestick"}],
+                                   [{"type": "bar"}],
+                                   [{"type": "scatter", "line": dict(color="#e8a020", width=1)}]],
+                        )
+
+                        # K线蜡烛
+                        fig.add_trace(
+                            go.Candlestick(
+                                x=df['date'],
+                                open=df['open'], high=df['high'],
+                                low=df['low'], close=df['close'],
+                                name="行情",
+                                increasing_line_color='#22c55e',
+                                decreasing_line_color='#ef4444',
+                            ),
+                            row=1, col=1
+                        )
+
+                        # 均线
+                        for ma_col, color, width in [
+                            ('ma5', '#f59e0b', 1.5),
+                            ('ma10', '#60a5fa', 1),
+                            ('ma20', '#a78bfa', 1),
+                            ('ma60', '#f87171', 1),
+                        ]:
+                            if ma_col in df.columns and df[ma_col].notna().any():
+                                fig.add_trace(
+                                    go.Scatter(x=df['date'], y=df[ma_col],
+                                               mode='lines', name=ma_col.upper(),
+                                               line=dict(color=color, width=width),
+                                               hoverinfo='skip'),
+                                    row=1, col=1
+                                )
+
+                        # 成交量
+                        colors = ['#22c55e' if df['close'].iloc[i] >= df['open'].iloc[i]
+                                  else '#ef4444' for i in range(len(df))]
+                        fig.add_trace(
+                            go.Bar(x=df['date'], y=df['volume'],
+                                   marker_color=colors, name="成交量",
+                                   opacity=0.7, hoverinfo='y'),
+                            row=2, col=1
+                        )
+
+                        # RSI
+                        delta = df['close'].diff()
+                        gain = delta.where(delta > 0, 0).rolling(14).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                        rs = gain / loss
+                        rsi = 100 - (100 / (1 + rs))
+                        fig.add_trace(
+                            go.Scatter(x=df['date'], y=rsi,
+                                       fill='tozeroy', name="RSI(14)",
+                                       line=dict(color='#e8a020', width=1.5),
+                                       fillcolor='rgba(232,160,32,0.1)',
+                                       hoverinfo='y'),
+                            row=3, col=1
+                        )
+                        # RSI 超买超卖线
+                        fig.add_hline(y=70, line_dash="dot", line_color="#ef4444",
+                                      annotation_text="超买", row=3, col=1)
+                        fig.add_hline(y=30, line_dash="dot", line_color="#22c55e",
+                                      annotation_text="超卖", row=3, col=1)
+
+                        fig.update_layout(
+                            template="plotly_dark",
+                            height=680,
+                            margin=dict(l=60, r=20, t=40, b=40),
+                            showlegend=True,
+                            legend=dict(orientation="h", yanchor="bottom",
+                                        y=1.02, xanchor="right", x=1),
+                            xaxis_rangeslider_visible=False,
+                            paper_bgcolor='#08080b',
+                            plot_bgcolor='#08080b',
+                            font=dict(color='#eeeef2', size=11),
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # 行情摘要
+                        last = df.iloc[-1]
+                        pct = (last['close'] - df.iloc[-2]['close']) / df.iloc[-2]['close'] * 100 if len(df) > 1 else 0
+                        s1, s2, s3, s4 = st.columns(4)
+                        pct_c = "#22c55e" if pct >= 0 else "#ef4444"
+                        s1.markdown(f'<div style="font-size:0.6rem;text-transform:uppercase;color:#55556a;font-weight:700">最新价</div><div style="font-size:1.4rem;font-weight:700;color:#eeeef2;margin-top:4px">{float(last["close"]):.2f}</div>', unsafe_allow_html=True)
+                        s2.markdown(f'<div style="font-size:0.6rem;text-transform:uppercase;color:#55556a;font-weight:700">涨跌幅</div><div style="font-size:1.4rem;font-weight:700;color:{pct_c};margin-top:4px">{pct:+.2f}%</div>', unsafe_allow_html=True)
+                        s3.markdown(f'<div style="font-size:0.6rem;text-transform:uppercase;color:#55556a;font-weight:700">MA20</div><div style="font-size:1.1rem;font-weight:700;color:#eeeef2;margin-top:4px">{float(last["ma20"]):.2f}</div>' if pd.notna(last.get("ma20")) else '', unsafe_allow_html=True)
+                        rsi_v = rsi.iloc[-1]
+                        rsi_c = "#ef4444" if rsi_v > 70 else "#22c55e" if rsi_v < 30 else "#eeeef2"
+                        s4.markdown(f'<div style="font-size:0.6rem;text-transform:uppercase;color:#55556a;font-weight:700">RSI(14)</div><div style="font-size:1.4rem;font-weight:700;color:{rsi_c};margin-top:4px">{rsi_v:.1f}</div>', unsafe_allow_html=True)
+
+                except Exception as e:
+                    st.error(f"K线加载失败: {e}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 页面 3: 个股分析报告
 # ═══════════════════════════════════════════════════════════════════════════
 elif page == "个股分析报告":
-    page_header("个股分析报告", "实时行情 · 技术分析 · 财务指标 · 投资建议")
 
     # 快捷按钮
     quick = [("贵州茅台", "600519"), ("平安银行", "000001"), ("宁德时代", "300750"), ("招商银行", "600036"), ("比亚迪", "002594")]
@@ -564,7 +706,194 @@ elif page == "个股分析报告":
                 st.error(f"分析失败: {e}")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 页面 3: 智能选股
+# 页面 4: 投资机会发现 (NEW)
+# ═══════════════════════════════════════════════════════════════════════════
+elif page == "投资机会":
+    page_header("投资机会发现", "趋势跟踪 · 均线排列 · RSI 超卖 · 量比异动 · 自动扫描")
+
+    # ── 预定义扫描组合 ────────────────────────────────────────────────────
+    WATCH_GROUPS = {
+        "消费龙头": ["sh600519", "sh600887", "sh000858", "sh603288", "sh600276"],
+        "科技成长": ["sz000002", "sz300750", "sh688981", "sh603986", "sz002475"],
+        "金融地产": ["sh600036", "sh601318", "sz000001", "sh600016", "sh600048"],
+        "医药健康": ["sh600276", "sh603259", "sz300015", "sh600196", "sz002007"],
+        "新能源":   ["sz300750", "sh601238", "sz002594", "sh600900", "sh601012"],
+    }
+
+    opp1, opp2 = st.columns([1, 1])
+    selected_group = opp1.selectbox("选择扫描组合", list(WATCH_GROUPS.keys()))
+    opp_mode = opp2.selectbox("扫描维度", [
+        "趋势跟踪", "均线多头", "RSI 超卖", "量比异动", "综合评分"
+    ])
+
+    # 自定义代码
+    custom_codes = st.text_input("➕ 自定义股票（逗号分隔）", placeholder="600519, 000001, 600036")
+
+    scan_codes = WATCH_GROUPS[selected_group]
+    if custom_codes.strip():
+        raw = [c.strip() for c in custom_codes.split(',')]
+        for c in raw:
+            qt = f"sh{c}" if c.startswith(('6', '5', '9')) else f"sz{c}"
+            if qt not in scan_codes:
+                scan_codes.append(qt)
+
+    if st.button("🔍 扫描机会", type="primary", use_container_width=True):
+        with st.spinner(f"扫描 {len(scan_codes)} 只股票..."):
+            try:
+                from data.data_loader import StockDataLoader
+                from strategies.signal_generator import SignalAggregator
+
+                loader = StockDataLoader()
+                agg = SignalAggregator()
+                df_rt = loader.get_realtime_quotes(scan_codes)
+
+                opportunities = []
+                for _, row in df_rt.iterrows():
+                    code = row.get('ts_code', '')
+                    name = row.get('name', '?')
+                    pct = row.get('pct_chg', 0) or 0
+                    price = row.get('current', 0) or 0
+                    vol_ratio = 1.0  # 简化：无历史量比数据
+
+                    # 计算信号评分
+                    score = 0
+                    reasons = []
+
+                    # 1. 涨跌幅过滤
+                    if -5 <= pct <= 9:
+                        score += 1
+                        if 1 <= pct <= 5:
+                            score += 2
+                            reasons.append(f"稳步上涨 {pct:+.2f}%")
+
+                    # 2. 趋势跟踪 (用历史K线)
+                    try:
+                        if not code or len(code) < 3:
+                            continue
+                        raw_code = code[2:]  # sh600519 -> 600519
+                        ts_fmt = f"{raw_code}.SH" if code.startswith('sh') else f"{raw_code}.SZ"
+                        from datetime import timedelta as td
+                        end_d = datetime.now().strftime('%Y-%m-%d')
+                        start_d = (datetime.now() - td(days=120)).strftime('%Y-%m-%d')
+                        hist = loader.get_historical(ts_fmt, start_d, end_d)
+                        if not hist.empty:
+                            ma5 = hist['close'].rolling(5).mean().iloc[-1]
+                            ma20 = hist['close'].rolling(20).mean().iloc[-1]
+                            if price > ma5 > ma20:
+                                score += 3
+                                reasons.append("均线多头排列")
+                            if price > ma20:
+                                score += 1
+                                reasons.append("站上 MA20")
+
+                            # RSI
+                            delta = hist['close'].diff()
+                            gain = delta.where(delta > 0, 0).rolling(14).mean()
+                            loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                            rs = gain / loss
+                            rsi = (100 - (100 / (1 + rs))).iloc[-1]
+                            if rsi < 30:
+                                score += 3
+                                reasons.append(f"RSI 超卖 {rsi:.1f}")
+                            elif 40 < rsi < 65:
+                                score += 1
+                                reasons.append(f"RSI 健康 {rsi:.1f}")
+
+                            # 动量
+                            mom = (hist['close'].iloc[-1] / hist['close'].iloc[-5] - 1) * 100 if len(hist) >= 5 else 0
+                            if mom > 3:
+                                score += 2
+                                reasons.append(f"5日动能 +{mom:.1f}%")
+
+                            # 布林带
+                            ma20_series = hist['close'].rolling(20).mean()
+                            std20 = hist['close'].rolling(20).std()
+                            upper = (ma20_series + 2 * std20).iloc[-1]
+                            lower = (ma20_series - 2 * std20).iloc[-1]
+                            if price <= lower:
+                                score += 3
+                                reasons.append("触及布林下轨(超卖)")
+                            elif price >= upper:
+                                score += 1
+                                reasons.append("突破布林上轨")
+
+                            # MACD
+                            ema12 = hist['close'].ewm(span=12, adjust=False).mean()
+                            ema26 = hist['close'].ewm(span=26, adjust=False).mean()
+                            diff = ema12 - ema26
+                            dea = diff.ewm(span=9, adjust=False).mean()
+                            macd = 2 * (diff - dea)
+                            if macd.iloc[-1] > 0 and macd.iloc[-2] <= 0:
+                                score += 2
+                                reasons.append("MACD 金叉")
+                    except Exception:
+                        pass
+
+                    opportunities.append({
+                        "代码": (code or '')[2:],
+                        "名称": name,
+                        "现价": f"¥{price:.2f}",
+                        "涨跌幅": f"{pct:+.2f}%",
+                        "评分": score,
+                        "推荐理由": " · ".join(reasons) if reasons else "暂无明确信号",
+                    })
+
+                # 排序
+                opportunities.sort(key=lambda x: x["评分"], reverse=True)
+
+                if not opportunities:
+                    st.info("未发现符合条件的机会")
+                else:
+                    top = opportunities[:15]
+
+                    # 机会摘要
+                    buy_signals = sum(1 for o in top if o["评分"] >= 5)
+                    st.markdown(f"""
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1.2rem">
+                        <div style="background:var(--bg-surface);border:1px solid var(--border-lit);border-radius:8px;padding:14px;text-align:center">
+                            <div style="font-size:0.6rem;text-transform:uppercase;color:var(--text-3);font-weight:700">扫描总数</div>
+                            <div style="font-size:1.8rem;font-weight:700;color:var(--text-1);margin-top:4px">{len(opportunities)}</div>
+                        </div>
+                        <div style="background:var(--bg-surface);border:1px solid var(--green);border-radius:8px;padding:14px;text-align:center">
+                            <div style="font-size:0.6rem;text-transform:uppercase;color:var(--green);font-weight:700">关注机会</div>
+                            <div style="font-size:1.8rem;font-weight:700;color:var(--green);margin-top:4px">{buy_signals}</div>
+                        </div>
+                        <div style="background:var(--bg-surface);border:1px solid var(--accent);border-radius:8px;padding:14px;text-align:center">
+                            <div style="font-size:0.6rem;text-transform:uppercase;color:var(--accent);font-weight:700">最高评分</div>
+                            <div style="font-size:1.8rem;font-weight:700;color:var(--accent);margin-top:4px">{top[0]['评分'] if top else 0}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    section_title("TOP 投资机会")
+                    disp_df = pd.DataFrame(top)
+                    pct_colors = []
+                    for _, r in disp_df.iterrows():
+                        pct_str = r['涨跌幅']
+                        if '+' in pct_str:
+                            pct_colors.append("var(--green)")
+                        elif '-' in pct_str:
+                            pct_colors.append("var(--red)")
+                        else:
+                            pct_colors.append("var(--text-2)")
+                    disp_df.index = range(1, len(disp_df)+1)
+                    disp_df.index.name = '排名'
+                    st.dataframe(disp_df, use_container_width=True, hide_index=False)
+
+                    # 导出
+                    csv_text = "排名,代码,名称,现价,涨跌幅,评分,推荐理由\n"
+                    for i, o in enumerate(opportunities):
+                        csv_text += f"{i+1},{o['代码']},{o['名称']},{o['现价']},{o['涨跌幅']},{o['评分']},{o['推荐理由']}\n"
+                    st.download_button("📥 导出机会清单",
+                                        csv_text.encode('utf-8-sig'),
+                                        "investment_opportunities.csv", "text/csv")
+            except Exception as e:
+                st.error(f"扫描失败: {e}")
+
+    st.info("💡 基于趋势跟踪策略，每日盘中更新 | 数据来源: 腾讯财经直调")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 页面 5: 智能选股
 # ═══════════════════════════════════════════════════════════════════════════
 elif page == "智能选股":
     page_header("智能选股引擎", "多因子量化筛选 · ROE · 毛利率 · 量比 · 均线排列")

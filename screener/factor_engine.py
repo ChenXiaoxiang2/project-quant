@@ -18,7 +18,7 @@ import numpy as np
 warnings.filterwarnings('ignore')
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from data.data_loader import StockDataLoader, BaostockDataLoader
+from data.data_loader import StockDataLoader
 from strategies.alpha_factors import AlphaFactors
 from strategies.trend_strategy import TrendStrategy
 
@@ -79,7 +79,6 @@ class StockScreener:
     def __init__(self, config: Optional[FactorConfig] = None):
         self.config = config or FactorConfig()
         self.loader = StockDataLoader()
-        self.baostock = BaostockDataLoader()
         self.alpha = AlphaFactors()
         self.trend = TrendStrategy()
 
@@ -186,12 +185,12 @@ class StockScreener:
         if cfg.price_change_max is not None and pct_chg > cfg.price_change_max:
             return None
 
-        # 获取历史K线
+        # 获取历史K线 (使用新浪财经)
         normalized = self._normalize_code(ts_code)
         try:
-            hist = self.baostock.fetch_historical(normalized, 
-                (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d'),
-                datetime.now().strftime('%Y-%m-%d'))
+            end_d = datetime.now().strftime('%Y-%m-%d')
+            start_d = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
+            hist = self.loader.get_historical(normalized, start_d, end_d)
         except Exception:
             return None
 

@@ -100,26 +100,27 @@ class DailyWorkflow:
 
     def _step_signals(self, dry_run: bool = False) -> dict:
         """生成策略信号 (对选出的股票)"""
-        from data.data_loader import StockDataLoader, BaostockDataLoader
+        from data.data_loader import StockDataLoader
         loader = StockDataLoader()
-        baostock = BaostockDataLoader()
         agg = SignalAggregator()
 
-        # 取沪深300成分股代表性标的作为示例
+        # 取代表性标的
         test_codes = ["600519.SH", "000001.SZ", "600036.SH", "300750.SZ"]
         signals = []
 
         for code in test_codes:
             try:
-                normalized = code
-                hist = baostock.fetch_historical(normalized,
-                    (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d'),
-                    datetime.now().strftime('%Y-%m-%d'))
+                end_d = datetime.now().strftime('%Y-%m-%d')
+                start_d = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
+                hist = loader.get_historical(code, start_d, end_d)
                 if not hist.empty:
                     result = agg.get_signal(hist)
                     qt_code = ("sh" if ".SH" in code else "sz") + code.split('.')[0]
-                    quote = loader._tencent.fetch_realtime([qt_code])
-                    name = quote.iloc[0]['name'] if not quote.empty else code
+                    try:
+                        quote = loader._tencent.fetch_realtime([qt_code])
+                        name = quote.iloc[0]['name'] if not quote.empty else code
+                    except Exception:
+                        name = code
                     signals.append({
                         "code": code,
                         "name": name,
@@ -153,8 +154,11 @@ class DailyWorkflow:
         top_stocks = screening_data.get('top5', [])
         screener_lines = []
         for s in top_stocks:
-            screener_lines.append(f"- **{s.get('code', '')}** {s.get('name', '')} | "
-                                  f"综合评分 {s.get('score', 0):.1f} | "
+            score_val = s.get('score', 0)
+            if isinstance(score_val, str):
+                score_val = 0
+            screener_lines.append(f"- **{s.get('ts_code', '')}** {s.get('name', '')} | "
+                                  f"综合评分 {score_val:.1f} | "
                                   f"PE {s.get('pe', 'N/A')} | "
                                   f"ROE {s.get('roe', 'N/A')}%")
 
@@ -162,8 +166,10 @@ class DailyWorkflow:
         signal_lines = []
         for sig in signals_data.get('signals', []):
             action_emoji = "🟢 买入" if sig['action'] == 'BUY' else "🔴 卖出" if sig['action'] == 'SELL' else "⚪ 观望"
+            conf_val = sig.get('confidence', 'LOW')
+            votes_val = sig.get('votes', {})
             signal_lines.append(f"- **{sig['name']}** ({sig['code']}) | {action_emoji} "
-                                f"| 置信度 {sig['confidence']:.0%} | 投票 {sig['votes']}")
+                                f"| 置信度 {conf_val} | 投票 {votes_val}")
 
         lines = [
             f"# 每日量化报告  {datetime.now().strftime('%Y-%m-%d %H:%M')}",

@@ -81,7 +81,8 @@ class StockAnalyzer:
         try:
             end = datetime.now().strftime('%Y-%m-%d')
             start = (datetime.now() - timedelta(days=400)).strftime('%Y-%m-%d')
-            hist = self.baostock.fetch_historical(ts_code, start, end)
+            # 优先使用新浪财经K线
+            hist = self.loader.get_historical(ts_code, start, end)
             if hist.empty:
                 # fallback: 腾讯K线
                 hist = self.loader._tencent.fetch_historical(qt_code, 'day', 250)

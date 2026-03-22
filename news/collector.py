@@ -74,7 +74,7 @@ class NewsDatabase:
 
     def insert(self, item: NewsItem):
         self.conn.execute(
-            "INSERT OR REPLACE INTO news VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO news VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
             (item.id, item.title, item.content, item.source, item.category,
              item.ts_code, item.publish_time, item.sentiment, item.sentiment_label, item.url)
         )
@@ -85,7 +85,7 @@ class NewsDatabase:
                  i.ts_code, i.publish_time, i.sentiment, i.sentiment_label, i.url)
                 for i in items]
         self.conn.executemany(
-            "INSERT OR REPLACE INTO news VALUES (?,?,?,?,?,?,?,?,?,?)", data
+            "INSERT OR REPLACE INTO news VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))", data
         )
         self.conn.commit()
 
@@ -111,7 +111,7 @@ class NewsDatabase:
         params.append(limit)
 
         rows = self.conn.execute(sql, params).fetchall()
-        cols = [d[0] for d in self.conn.execute("PRAGMA table_info(news)").fetchall()]
+        cols = [d[1] for d in self.conn.execute("PRAGMA table_info(news)").fetchall()]
         return [dict(zip(cols, r)) for r in rows]
 
     def get_market_summary(self, days: int = 1) -> dict:
@@ -124,12 +124,16 @@ class NewsDatabase:
             "FROM news WHERE publish_time >= ?",
             (since,)
         ).fetchone()
+        total = row[0] or 0
+        avg_s = row[1] or 0
+        pos = row[2] or 0
+        neg = row[3] or 0
         return {
-            "total_news": row[0] or 0,
-            "avg_sentiment": round(row[1] or 0, 3),
-            "positive_count": row[2] or 0,
-            "negative_count": row[3] or 0,
-            "bullish_ratio": round(row[2] / max(row[0], 1) * 100, 1),
+            "total_news": total,
+            "avg_sentiment": round(avg_s, 3),
+            "positive_count": pos,
+            "negative_count": neg,
+            "bullish_ratio": round(pos / max(total, 1) * 100, 1),
         }
 
     def close(self):
@@ -233,30 +237,46 @@ class NewsCollector:
     def _collect_sina_news(self) -> int:
         """新浪财经快讯"""
         items: list[NewsItem] = []
-        try:
-            url = "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2516&num=20&versionNumber=1.2.4&page=1"
-            import requests
-            r = requests.get(url, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            for item in data.get('result', {}).get('data', []):
-                title = item.get('title', '')
-                ctime = item.get('ctime', '')
-                sentiment = self._analyze_sentiment(title)
-                items.append(NewsItem(
-                    id=f"sina_{hash(title)}",
-                    title=title[:200],
-                    content=title[:200],
-                    source="sina",
-                    category=self._categorize(title),
-                    ts_code=self._extract_stock_code(title),
-                    publish_time=ctime,
-                    sentiment=sentiment,
-                    sentiment_label=self._sentiment_label(sentiment),
-                    url=item.get('url', ''),
-                ))
-        except Exception as e:
-            print(f"[新浪快讯] 失败: {e}")
+        urls_to_try = [
+            "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2516&num=30&versionNumber=1.2.4&page=1",
+            "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2516&num=30&page=1",
+        ]
+        for url in urls_to_try:
+            try:
+                import requests
+                r = requests.get(url, timeout=10,
+                                 headers={'User-Agent': 'Mozilla/5.0',
+                                          'Referer': 'https://finance.sina.com.cn'})
+                r.raise_for_status()
+                data = r.json()
+                for item in data.get('result', {}).get('data', []):
+                    title = item.get('title', '')
+                    ctime = item.get('ctime', '')
+                    # 格式化时间
+                    if ctime and len(ctime) == 10:
+                        from datetime import datetime
+                        try:
+                            ctime = datetime.fromtimestamp(int(ctime)).strftime('%Y-%m-%d %H:%M')
+                        except Exception:
+                            pass
+                    sentiment = self._analyze_sentiment(title)
+                    items.append(NewsItem(
+                        id=f"sina_{hash(title)}",
+                        title=title[:200],
+                        content=title[:200],
+                        source="sina",
+                        category=self._categorize(title),
+                        ts_code=self._extract_stock_code(title),
+                        publish_time=str(ctime),
+                        sentiment=sentiment,
+                        sentiment_label=self._sentiment_label(sentiment),
+                        url=item.get('url', ''),
+                    ))
+                if items:
+                    break  # 成功则停止尝试
+            except Exception as e:
+                print(f"[新浪快讯] 失败 ({url[:60]}): {e}")
+                continue
 
         if items:
             self.db.insert_batch(items)

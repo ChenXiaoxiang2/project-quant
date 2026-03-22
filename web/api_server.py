@@ -66,15 +66,12 @@ def get_latest_report():
 def query_stock(code: str):
     """
     查询指定股票实时行情
-    code 格式: '600519' (6位代码，自动识别沪/深)
+    code 格式: '600519' (6位代码，自动识别沪/深) 或 '600519.SH'
     """
     loader = StockDataLoader()
     try:
-        # 自动补充市场前缀
-        if not code.startswith(('sh', 'sz')):
-            code = 'sh' + code if code.startswith(('6', '5', '9')) else 'sz' + code
-
-        quote = loader.get_single_quote(_normalize_ts_code(code))
+        ts = _normalize_ts_code(code)
+        quote = loader.get_single_quote(ts)
         return quote
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))

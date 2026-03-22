@@ -93,7 +93,7 @@ class TencentDataLoader:
 
 
 class SinaDataLoader:
-    """新浪财经直调 — 实时行情"""
+    """新浪财经直调 — 实时行情 + 历史K线"""
 
     def fetch_realtime(self, codes: list[str]) -> pd.DataFrame:
         """
@@ -130,6 +130,53 @@ class SinaDataLoader:
                 'pct_chg': None,
             })
         return pd.DataFrame(rows)
+
+    def fetch_historical(self, code: str, scale: str = '240', count: int = 60) -> pd.DataFrame:
+        """
+        获取历史K线 (新浪财经)
+        scale: 5=5分钟, 240=日K, 60=周K, 1200=月K
+        count: 数据条数 (最大300)
+        """
+        scale_map = {'day': 240, 'week': 60, 'month': 1200, '5min': 5, '240': 240, '60': 60, '1200': 1200, '5': 5}
+        s = scale_map.get(str(scale), 240)
+        url = (
+            "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php"
+            "/CN_MarketData.getKLineData"
+        )
+        params = {
+            "symbol": code,
+            "scale": str(s),
+            "ma": "no",
+            "datalen": str(min(count, 300)),
+        }
+        headers = {
+            'User-Agent': 'Mozilla/5.0',
+            'Referer': 'https://finance.sina.com.cn',
+        }
+        import requests
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r.encoding = 'utf-8'
+        data = r.json()
+        if not isinstance(data, list):
+            return pd.DataFrame(columns=['date', 'open', 'close', 'high', 'low', 'volume'])
+
+        rows = []
+        for bar in data:
+            try:
+                rows.append({
+                    'date': bar.get('day', ''),
+                    'open': float(bar.get('open', 0)),
+                    'close': float(bar.get('close', 0)),
+                    'high': float(bar.get('high', 0)),
+                    'low': float(bar.get('low', 0)),
+                    'volume': float(bar.get('volume', 0)),
+                })
+            except (ValueError, TypeError):
+                continue
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df['date'] = pd.to_datetime(df['date'])
+        return df
 
 
 # ------------------------------------------------------------------------------
@@ -326,39 +373,58 @@ class StockDataLoader:
 
     # ── 历史K线 ──────────────────────────────────────────────────────────────
 
-    def get_historical(self, ts_code: str, start_date: str, end_date: str,
+    def get_historical(self, ts_code: str, start_date: str = '', end_date: str = '',
                        adjustflag: str = '2') -> pd.DataFrame:
         """
         获取历史日K线
-        ts_code 格式: '000001.SZ' 或 '600519.SH'
-        adjustflag: '1'=后复权, '2'=前复权, '3'=不复权
+        ts_code 格式: '000001.SZ' 或 '600519.SH' 或 'sh600519'
+        优先使用新浪财经K线，fallback 到腾讯
         """
-        # fallback 链: Baostock → AKShare → Tencent
-        for source_name, loader, method, extra_kwargs in [
-            ('Baostock', self._baostock, self._baostock.fetch_historical,
-             {'adjustflag': adjustflag}),
-            ('AKShare', self._akshare, self._akshare.fetch_historical, {}),
-        ]:
-            try:
-                df = self._safe_call(method, ts_code, start_date, end_date, **extra_kwargs)
-                if df is not None and not df.empty:
-                    return df
-            except Exception as e:
-                print(f"[{source_name}] 历史数据失败，切换: {e}")
-                continue
+        # 转换为 sh/sz 前缀格式
+        ts_clean = ts_code.lower().replace('.sh', '').replace('.sz', '').replace('sh', '').replace('sz', '')
+        market_map = {'sh': 'sh', 'sz': 'sz'}
+        if ts_code.lower().endswith('.sh'):
+            qt_code = f"sh{ts_clean}"
+        elif ts_code.lower().endswith('.sz'):
+            qt_code = f"sz{ts_clean}"
+        elif ts_code.startswith('sh') or ts_code.startswith('sz'):
+            qt_code = ts_code.lower()
+        elif ts_code.startswith(('6', '5', '9')):
+            qt_code = f"sh{ts_code.strip()}"
+        else:
+            qt_code = f"sz{ts_code.strip()}"
 
-        # 最后 fallback: Tencent
+        # 计算日期范围
+        from datetime import datetime, timedelta
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=400)).strftime('%Y-%m-%d')
+        # 计算需要的数据条数
+        days_diff = (datetime.strptime(end_date, '%Y-%m-%d') -
+                     datetime.strptime(start_date, '%Y-%m-%d')).days
+        count = min(max(days_diff + 20, 60), 300)
+
+        # 优先: 新浪财经日K
         try:
-            market_map = {'SZ': 'sz', 'SH': 'sh'}
-            market = market_map.get(ts_code.split('.')[-1], 'sz')
-            qt_code = f"{market}{ts_code.split('.')[0]}"
-            df = self._safe_call(self._tencent.fetch_historical, qt_code, 'day', 500)
+            df = self._sina.fetch_historical(qt_code, scale='day', count=count)
+            if df is not None and not df.empty:
+                # 过滤日期范围
+                df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+                if not df.empty:
+                    return df
+        except Exception as e:
+            print(f"[Sina K线] 失败: {e}")
+
+        # Fallback: 腾讯历史K线
+        try:
+            df = self._tencent.fetch_historical(qt_code, 'day', count)
             if df is not None and not df.empty:
                 return df
         except Exception as e:
-            print(f"[Tencent] 历史数据失败: {e}")
+            print(f"[腾讯 K线] 失败: {e}")
 
-        raise RuntimeError(f"无法获取 {ts_code} 历史数据")
+        return pd.DataFrame(columns=['date', 'open', 'close', 'high', 'low', 'volume'])
 
     # ── 全市场股票列表 ────────────────────────────────────────────────────────
 

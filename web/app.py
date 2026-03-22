@@ -69,6 +69,7 @@ if THEME == 'dark':
   .qd-page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-1); letter-spacing: -0.02em; line-height: 1.2; }
   .qd-page-sub { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
   .qd-header-right { text-align: right; }
+  .qd-header-time { font-size: 0.68rem; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
   .qd-live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); margin-right: 5px; animation: pulse-green 2s infinite; }
   @keyframes pulse-green { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
   div[data-testid="stMetric"] { background: var(--bg-surface); border: 1px solid var(--border-lit); border-radius: 8px; padding: 14px 16px; position: relative; overflow: hidden; }
@@ -148,6 +149,7 @@ else:
   .qd-page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-1); letter-spacing: -0.02em; line-height: 1.2; }
   .qd-page-sub { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
   .qd-header-right { text-align: right; }
+  .qd-header-time { font-size: 0.68rem; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; }
   .qd-live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); margin-right: 5px; animation: pulse-green 2s infinite; }
   @keyframes pulse-green { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
   div[data-testid="stMetric"] { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -231,10 +233,10 @@ def page_header(title, subtitle, live=False):
         <div class="qd-page-title">{title}</div>
         <div class="qd-page-sub">{subtitle}</div>
       </div>
-      <div class="qd-header-right">
-        {live_tag}
-        <div style="font-size:0.68rem;color:var(--text-3);font-family:'IBM Plex Mono',monospace">{now}</div>
-      </div>
+        <div class="qd-header-right">
+          {live_tag}
+          <div class="qd-header-time">{now}</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
